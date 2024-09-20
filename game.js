@@ -30,9 +30,10 @@ let gameLoop;
 let mushroomsCollected = 0;
 let lastItemDistance = 0;
 let gameSpeed = 3;
-const maxGameSpeed = 4.7;
+const maxGameSpeed = 5;
 let finalTime;
 let finalMushrooms;
+let gameActive = false;
 
 const playerImg = new Image();
 playerImg.src = 'melvin.png';
@@ -63,6 +64,7 @@ backgroundImg.onload = () => {
 };
 
 const backgroundMusic = new Audio('background_music.mp3');
+backgroundMusic.loop = true;
 const jumpSound = new Audio('jump.mp3');
 jumpSound.volume = 0.6;
 const collectSound = new Audio('nom.mp3');
@@ -88,10 +90,12 @@ function startGame() {
     startTime = Date.now();
     backgroundMusic.currentTime = 0;
     backgroundMusic.play();
+    gameActive = true;
     requestAnimationFrame(update);
 }
 
 function endGame() {
+    gameActive = false;
     backgroundMusic.pause();
     deathSound.play();
     finalTime = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -214,7 +218,7 @@ function collision(rect1, rect2) {
 }
 
 function handleJump() {
-    if (player.y === 400) {
+    if (gameActive && player.y === 400) {
         player.jumping = true;
         jumpSound.currentTime = 0;
         jumpSound.play();
