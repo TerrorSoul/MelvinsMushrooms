@@ -3,79 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Melvins Mushrooms</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            background-color: #1a1a1a;
-            font-family: 'Comic Sans MS', cursive, sans-serif;
-            overflow: hidden;
-        }
-        #gameCanvas {
-            border: 2px solid #4a4a4a;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
-        }
-        #startMenu, #endScreen {
-            position: absolute;
-            background-color: rgba(0, 0, 0, 0.8);
-            color: #fff;
-            padding: 20px;
-            border-radius: 20px;
-            text-align: center;
-            transition: opacity 0.5s;
-        }
-        button {
-            background-color: #FF8C00;
-            border: 4px solid #FF4500;
-            color: white;
-            padding: 15px 32px;
-            text-align: center;
-            font-size: 20px;
-            margin: 4px 2px;
-            cursor: pointer;
-            border-radius: 20px;
-            box-shadow: 0px 6px #d35400;
-            transition: transform 0.2s, background-color 0.3s;
-        }
-        button:hover {
-            background-color: #FF6347;
-            transform: scale(1.05);
-        }
-        button:active {
-            box-shadow: none;
-            transform: translateY(4px);
-        }
-        #shareButton {
-            background-color: #7289DA;
-            border: 4px solid #5865F2;
-            margin-top: 20px;
-        }
-        canvas.shareCanvas {
-            display: none;
-        }
-    </style>
+    <title>Melvin's Mushrooms</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <canvas id="gameCanvas" width="1000" height="500"></canvas>
-    <canvas id="shareCanvas" class="shareCanvas" width="600" height="300"></canvas>
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <canvas id="shareCanvas" width="600" height="300" style="display: none;"></canvas>
+
     <div id="startMenu">
-        <h1>Melvins Mushrooms</h1>
+        <h1>Melvin's Mushrooms</h1>
         <p>Collect mushrooms and avoid obstacles!</p>
         <button id="startButton">Start Game</button>
+        <button id="leaderboardButton">Leaderboard</button>
     </div>
+
     <div id="endScreen" style="display: none;">
-        <h1>Game Over</h1>
-        <h3>You tripped over a 1x1 block!</h3>
+        <h2>Game Over</h2>
+        <p>You tripped over a 1x1 block!</p>
         <p>Time survived: <span id="finalTime"></span></p>
         <p>Mushrooms eaten: <span id="finalMushrooms"></span></p>
         <button id="retryButton">Retry</button>
+        <button id="leaderboardButton2">Leaderboard</button>
         <button id="shareButton">Share My Score</button>
     </div>
+
+    <div id="leaderboardScreen" style="display: none;">
+        <h2>Leaderboard</h2>
+        <ul id="leaderboardList"></ul>
+        <button id="closeLeaderboardButton">Close</button>
+    </div>
+
+    <div id="usernameModal">
+        <h2>Enter Your Username</h2>
+        <input type="text" id="usernameInput" placeholder="Enter username">
+        <button id="submitUsername">Submit</button>
+    </div>
+
     <script src="game.js"></script>
 </body>
 </html>

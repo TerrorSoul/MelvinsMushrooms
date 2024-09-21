@@ -7,6 +7,14 @@ const retryButton = document.getElementById('retryButton');
 const finalTimeSpan = document.getElementById('finalTime');
 const finalMushroomsSpan = document.getElementById('finalMushrooms');
 const shareButton = document.getElementById('shareButton');
+const leaderboardButton = document.getElementById('leaderboardButton');
+const leaderboardButton2 = document.getElementById('leaderboardButton2');
+const leaderboardScreen = document.getElementById('leaderboardScreen');
+const leaderboardList = document.getElementById('leaderboardList');
+const closeLeaderboardButton = document.getElementById('closeLeaderboardButton');
+const usernameModal = document.getElementById('usernameModal');
+const usernameInput = document.getElementById('usernameInput');
+const submitUsernameButton = document.getElementById('submitUsername');
 
 const shareCanvas = document.getElementById('shareCanvas');
 const shareCtx = shareCanvas.getContext('2d');
@@ -25,8 +33,9 @@ const player = {
 
 const items = [];
 let score = 0;
-let startTime;
-let gameLoop;
+let gameStartTime;
+let gamePausedTime = 0;
+let lastPauseStartTime;
 let mushroomsCollected = 0;
 let lastItemDistance = 0;
 let gameSpeed = 3;
@@ -34,6 +43,10 @@ const maxGameSpeed = 5;
 let finalTime;
 let finalMushrooms;
 let gameActive = false;
+let lastUpdateTime;
+let lastJumpTime = 0;
+const jumpCooldown = 500;
+let currentGameTime = 0;
 
 const playerImg = new Image();
 playerImg.src = 'melvin.png';
@@ -51,12 +64,19 @@ const mushroomImgs = [
 
 const obstacleImg = new Image();
 obstacleImg.src = 'obstacle.png';
+let obstacleCollisionMask;
 
 const backgroundImg = new Image();
 backgroundImg.src = 'background.png';
 
 const groundImg = new Image();
 groundImg.src = 'ground.png';
+
+const muteImg = new Image();
+muteImg.src = 'mute.png';
+
+const unmuteImg = new Image();
+unmuteImg.src = 'unmute.png';
 
 let backgroundLoaded = false;
 backgroundImg.onload = () => {
@@ -76,10 +96,37 @@ const maxMushroomChain = 3;
 let backgroundX = 0;
 let groundX = 0;
 
+let isMuted = false;
+
+function generateCollisionMask(img) {
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCanvas.width = img.width;
+    tempCanvas.height = img.height;
+    tempCtx.drawImage(img, 0, 0);
+    const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
+    const mask = new Array(img.height).fill().map(() => new Array(img.width).fill(false));
+    
+    for (let y = 0; y < img.height; y++) {
+        for (let x = 0; x < img.width; x++) {
+            const alpha = imageData.data[(y * img.width + x) * 4 + 3];
+            if (alpha > 0) {
+                mask[y][x] = true;
+            }
+        }
+    }
+    return mask;
+}
+
+obstacleImg.onload = () => {
+    obstacleCollisionMask = generateCollisionMask(obstacleImg);
+};
+
 function startGame() {
     startMenu.style.opacity = 0;
     setTimeout(() => startMenu.style.display = 'none', 500);
     endScreen.style.display = 'none';
+    leaderboardScreen.style.display = 'none';
     score = 0;
     mushroomsCollected = 0;
     items.length = 0;
@@ -87,9 +134,16 @@ function startGame() {
     gameSpeed = 3;
     player.y = 400;
     player.jumping = false;
-    startTime = Date.now();
-    backgroundMusic.currentTime = 0;
-    backgroundMusic.play();
+    gameStartTime = performance.now();
+    lastUpdateTime = gameStartTime;
+    gamePausedTime = 0;
+    lastPauseStartTime = null;
+    lastJumpTime = 0;
+    currentGameTime = 0;
+    if (!isMuted) {
+        backgroundMusic.currentTime = 0;
+        backgroundMusic.play();
+    }
     gameActive = true;
     requestAnimationFrame(update);
 }
@@ -97,16 +151,40 @@ function startGame() {
 function endGame() {
     gameActive = false;
     backgroundMusic.pause();
-    deathSound.play();
-    finalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+    if (!isMuted) {
+        deathSound.play();
+    }
+    finalTime = currentGameTime.toFixed(2);
     finalMushrooms = mushroomsCollected;
     endScreen.style.display = 'block';
-    endScreen.style.opacity = 1;
     finalTimeSpan.textContent = finalTime + ' seconds';
     finalMushroomsSpan.textContent = finalMushrooms;
+
+    const username = localStorage.getItem('username');
+    if (username) {
+        saveScore(username, finalMushrooms, parseFloat(finalTime));
+    } else {
+        showUsernameModal();
+    }
 }
 
-function update() {
+function update(currentTime) {
+    if (!gameActive) return;
+
+    if (lastPauseStartTime) {
+        gamePausedTime += currentTime - lastPauseStartTime;
+        lastPauseStartTime = null;
+    }
+
+    const deltaTime = (currentTime - lastUpdateTime) / 1000;
+    lastUpdateTime = currentTime;
+
+    if (deltaTime > 0.1) {
+        lastPauseStartTime = currentTime;
+        requestAnimationFrame(update);
+        return;
+    }
+
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     backgroundX -= gameSpeed;
@@ -181,7 +259,7 @@ function update() {
             }
         } else {
             ctx.drawImage(items[i].image, items[i].x, items[i].y, items[i].width, items[i].height);
-            if (collision(player, items[i])) {
+            if (preciseCollision(player, items[i])) {
                 endGame();
                 return;
             }
@@ -193,7 +271,9 @@ function update() {
 
     if (mushroomsCollectedThisFrame > 0) {
         mushroomsCollected += mushroomsCollectedThisFrame;
-        collectSound.play();
+        if (!isMuted) {
+            collectSound.play();
+        }
     }
 
     if (gameSpeed < maxGameSpeed) {
@@ -203,7 +283,10 @@ function update() {
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 24px Comic Sans MS';
     ctx.fillText(`Mushrooms: ${mushroomsCollected}`, 20, 40);
-    ctx.fillText(`Time: ${((Date.now() - startTime) / 1000).toFixed(2)}s`, 20, 80);
+    currentGameTime = Math.max(0, (currentTime - gameStartTime - gamePausedTime) / 1000);
+    ctx.fillText(`Time: ${currentGameTime.toFixed(2)}s`, 20, 80);
+
+    ctx.drawImage(isMuted ? muteImg : unmuteImg, canvas.width - 60, 20, 40, 40);
 
     requestAnimationFrame(update);
 }
@@ -216,26 +299,149 @@ function collision(rect1, rect2) {
         rect1.y + rect1.height > rect2.y
     );
 }
+// Improved precision on hitboxes
+function preciseCollision(player, obstacle) {
+    if (!collision(player, obstacle)) return false;
 
-function handleJump() {
-    if (gameActive && player.y === 400) {
+    const scaleX = obstacleCollisionMask[0].length / obstacle.width;
+    const scaleY = obstacleCollisionMask.length / obstacle.height;
+
+    for (let y = 0; y < player.height; y++) {
+        for (let x = 0; x < player.width; x++) {
+            const playerX = Math.floor(player.x + x - obstacle.x);
+            const playerY = Math.floor(player.y + y - obstacle.y);
+            
+            if (playerX >= 0 && playerX < obstacle.width && playerY >= 0 && playerY < obstacle.height) {
+                const maskX = Math.floor(playerX * scaleX);
+                const maskY = Math.floor(playerY * scaleY);
+                
+                if (obstacleCollisionMask[maskY] && obstacleCollisionMask[maskY][maskX]) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function handleJump(event) {
+    event.preventDefault();
+    const currentTime = performance.now();
+    if (gameActive && player.y === 400 && currentTime - lastJumpTime >= jumpCooldown) {
         player.jumping = true;
-        jumpSound.currentTime = 0;
-        jumpSound.play();
+        if (!isMuted) {
+            jumpSound.currentTime = 0;
+            jumpSound.play();
+        }
+        lastJumpTime = currentTime;
     }
 }
 
+function toggleMute(event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+
+    if (x >= canvas.width - 60 && x <= canvas.width - 20 && y >= 20 && y <= 60) {
+        isMuted = !isMuted;
+        if (isMuted) {
+            backgroundMusic.pause();
+        } else if (gameActive) {
+            backgroundMusic.play();
+        }
+    }
+}
+
+function saveScore(username, score, time) {
+    fetch('leaderboard.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            username: username,
+            score: score,
+            time: time
+        }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+        } else {
+            console.error('Error saving score:', data.error);
+        }
+    })
+    .catch((error) => {
+        console.error('Network error:', error);
+    });
+}
+
+function showLeaderboard() {
+    fetch('leaderboard.php')
+    .then(response => response.json())
+    .then(data => {
+        leaderboardList.innerHTML = '';
+        if (Array.isArray(data)) {
+            data.forEach((entry, index) => {
+                const li = document.createElement('li');
+                const formattedTime = Number(entry.time) ? Number(entry.time).toFixed(2) : entry.time;
+                li.textContent = `${index + 1}. ${entry.username}: ${entry.score} mushrooms in ${formattedTime}s`;
+                leaderboardList.appendChild(li);
+            });
+        } else if (data.error) {
+            console.error('Error loading leaderboard:', data.error);
+            leaderboardList.innerHTML = '<li>Error loading leaderboard. Please try again later.</li>';
+        }
+        leaderboardScreen.style.display = 'block';
+    })
+    .catch((error) => {
+        console.error('Error loading leaderboard:', error);
+        leaderboardList.innerHTML = '<li>Error loading leaderboard. Please try again later.</li>';
+        leaderboardScreen.style.display = 'block';
+    });
+}
+
+function showUsernameModal() {
+    usernameModal.style.display = 'block';
+    endScreen.style.display = 'none';
+}
+
+function hideUsernameModal() {
+    usernameModal.style.display = 'none';
+    endScreen.style.display = 'block';
+}
+
+// Event listeners
 document.addEventListener('keydown', (event) => {
     if (event.code === 'Space') {
-        handleJump();
+        handleJump(event);
     }
 });
 
-canvas.addEventListener('click', handleJump);
+canvas.addEventListener('mousedown', (event) => {
+    handleJump(event);
+    toggleMute(event);
+});
 canvas.addEventListener('touchstart', handleJump);
 
 startButton.addEventListener('click', startGame);
 retryButton.addEventListener('click', startGame);
+leaderboardButton.addEventListener('click', showLeaderboard);
+leaderboardButton2.addEventListener('click', showLeaderboard);
+closeLeaderboardButton.addEventListener('click', () => {
+    leaderboardScreen.style.display = 'none';
+});
+
+submitUsernameButton.addEventListener('click', () => {
+    const username = usernameInput.value.trim();
+    if (username) {
+        localStorage.setItem('username', username);
+        saveScore(username, finalMushrooms, parseFloat(finalTime));
+        hideUsernameModal();
+    } else {
+        console.error('Please enter a valid username.');
+    }
+});
 
 shareButton.addEventListener('click', () => {
     const bannerWidth = 600;
@@ -277,3 +483,21 @@ shareButton.addEventListener('click', () => {
         console.error('Failed to load background image.');
     };
 });
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        lastPauseStartTime = performance.now();
+        backgroundMusic.pause();
+    } else {
+        if (lastPauseStartTime) {
+            gamePausedTime += performance.now() - lastPauseStartTime;
+            lastPauseStartTime = null;
+        }
+        if (gameActive && !isMuted) {
+            backgroundMusic.play();
+        }
+    }
+});
+
+window.onload = () => {
+};
